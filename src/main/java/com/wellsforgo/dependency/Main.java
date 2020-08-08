@@ -60,9 +60,9 @@ public class Main {
         /** Clone the git repository*/
         VersionControl git = new GitCloner();
 
-        File localPath = File.createTempFile("GitRepository", "");
+        File localPath = new File("GitRepository", "");
         // delete repository before running this
-        Files.delete(localPath.toPath());
+//        Files.delete(localPath.toPath());
         logger.debug("Local temp directory : {} ", localPath.getAbsolutePath());
         if (params.get("branch") != null && !params.get("branch").isEmpty()) {
             new GitCloner().clone(params.get("gitURI").trim(),
