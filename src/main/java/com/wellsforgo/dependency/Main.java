@@ -62,7 +62,7 @@ public class Main {
 
         File localPath = new File("GitRepository", "");
         // delete repository before running this
-//        Files.delete(localPath.toPath());
+//        Files.delete(localPath.toPath());jen
         logger.debug("Local temp directory : {} ", localPath.getAbsolutePath());
         if (params.get("branch") != null && !params.get("branch").isEmpty()) {
             new GitCloner().clone(params.get("gitURI").trim(),
