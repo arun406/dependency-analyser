@@ -6,6 +6,7 @@ import com.wellsforgo.dependency.exporters.DependencyExcelExporter;
 import com.wellsforgo.source.UnableToCloneException;
 import com.wellsforgo.source.VersionControl;
 import com.wellsforgo.source.git.GitCloner;
+import com.wellsforgo.source.git.Repositories;
 import com.wellsforgo.source.git.SourceFileSearcher;
 import org.apache.maven.model.Model;
 import org.codehaus.plexus.util.xml.pull.XmlPullParserException;
@@ -15,6 +16,7 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.stereotype.Component;
 
+import javax.swing.*;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
@@ -36,7 +38,7 @@ public class Main {
     static {
         allowedKeys.add("--username");
         allowedKeys.add("--password");
-        allowedKeys.add("--gitURI");
+        allowedKeys.add("--organization");
         allowedKeys.add("--branch");
     }
 
@@ -49,6 +51,11 @@ public class Main {
         logger.debug(" Execution started..");
 
         Map<String, String> params = convertToKeyValuePair(args);
+        String password = params.get("password");
+        String username = params.get("username");
+        String organization = params.get("organization");
+        String branch = params.get("branch");
+
         params.forEach((k, v) -> logger.debug("Key : {},  Value : {}", new Object[]{k, v}));
 
         List<Dependency> dependencies = new ArrayList<>();
@@ -57,27 +64,34 @@ public class Main {
                 new AnnotationConfigApplicationContext(AnnotationConfig.class);
         Parser parser = context.getBean(Parser.class);
 
-        /** Clone the git repository*/
-        VersionControl git = new GitCloner();
+        List<Path> paths = new ArrayList<>();
 
-        File localPath = new File("GitRepository", "");
-        // delete repository before running this
-//        Files.delete(localPath.toPath());jen
-        logger.debug("Local temp directory : {} ", localPath.getAbsolutePath());
-        if (params.get("branch") != null && !params.get("branch").isEmpty()) {
-            new GitCloner().clone(params.get("gitURI").trim(),
-                    localPath.getAbsolutePath(), params.get("branch").trim(), params.get("username"), params.get("password").trim());
-        } else {
-            new GitCloner().clone(params.get("gitURI").trim(),
-                    localPath.getAbsolutePath(), params.get("username"), params.get("password").trim());
+        // get the repositories clone url.
+        Map<String, String> map = Repositories.getRepositories(organization, password);
+        if (map != null && !map.isEmpty()) {
+            logger.debug("cloning the repositories.....");
+            for (Map.Entry<String, String> entry : map.entrySet()) {
+                File localPath = new File(entry.getKey(), "");
+                logger.debug("Local temp directory : {} ", localPath.getAbsolutePath());
+
+                // delete repository before running this
+                removeDirectory(localPath);
+                clone(null, localPath, entry.getValue(), username, password);
+                logger.debug(" Git repository {} cloned successfully...", entry.getKey());
+
+                // searching the pom.xml in the git repository recursively
+                logger.debug("searching the repositories for pom.xml...");
+                SourceFileSearcher sourceFileSearcher = new SourceFileSearcher();
+                List<Path> temp = sourceFileSearcher
+                        .search(new File(localPath.getAbsolutePath()), "pom.xml")
+                        .stream().collect(Collectors.toList());
+
+                if (temp != null && !temp.isEmpty()) {
+                    paths.addAll(temp);
+                }
+            }
         }
-        logger.debug(" Git repository cloned successfully...");
 
-        // searching the pom.xml in the git repository recursively
-        SourceFileSearcher sourceFileSearcher = new SourceFileSearcher();
-        List<Path> paths = sourceFileSearcher
-                .search(new File(localPath.getAbsolutePath()), "pom.xml")
-                .stream().collect(Collectors.toList());
 
         DependencyExcelExporter excelExporter = new DependencyExcelExporter();
 
@@ -98,6 +112,40 @@ public class Main {
 
         // exporting the system dependencies to excel format.
         exportToExcel(excelExporter, dependencies);
+    }
+
+    /**
+     * @param dir
+     */
+    public static void removeDirectory(File dir) {
+        if (dir.isDirectory()) {
+            File[] files = dir.listFiles();
+            if (files != null && files.length > 0) {
+                for (File aFile : files) {
+                    removeDirectory(aFile);
+                }
+            }
+            dir.delete();
+        } else {
+            dir.delete();
+        }
+    }
+
+    /**
+     * @param localPath
+     * @param uri
+     * @param username
+     * @param password
+     * @throws UnableToCloneException
+     */
+    private static void clone(String branch, File localPath, String uri, String username, String password) throws UnableToCloneException {
+        if (branch != null && !branch.isEmpty()) {
+            new GitCloner().clone(uri,
+                    localPath.getAbsolutePath(), branch, username, password);
+        } else {
+            new GitCloner().clone(uri,
+                    localPath.getAbsolutePath(), username, password);
+        }
     }
 
     /**
